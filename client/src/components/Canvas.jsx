@@ -28,7 +28,17 @@ export default function Canvas({ socket, isDrawer }) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       try {
-        const data = canvas.toDataURL('image/png', 0.5);
+        // Create offscreen canvas with background color baked in
+        // (the dark bg is CSS-only, so toDataURL gives transparent bg
+        //  which AI models render as white → white strokes invisible)
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        const offCtx = offscreen.getContext('2d');
+        offCtx.fillStyle = '#1e1e2e';
+        offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+        offCtx.drawImage(canvas, 0, 0);
+        const data = offscreen.toDataURL('image/png', 0.5);
         socket.emit('canvas-snapshot', data);
         // Request roast after a short delay
         setTimeout(() => socket.emit('request-roast'), 500);

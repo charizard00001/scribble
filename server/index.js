@@ -271,21 +271,27 @@ io.on('connection', (socket) => {
     callback?.({ success: true });
   });
 
-  // --- Voice Signaling ---
+  // --- Voice Chat (Socket.IO audio relay) ---
 
-  socket.on('voice-signal', ({ to, signal }) => {
-    const targetSocket = findSocketByPlayerId(to, socket.roomCode);
-    if (targetSocket) {
-      targetSocket.emit('voice-signal', {
-        from: socket.playerId,
-        signal,
-      });
-    }
+  socket.on('voice-join', () => {
+    if (!socket.roomCode) return;
+    socket.join(`${socket.roomCode}-voice`);
+    socket.to(socket.roomCode).emit('voice-peer-joined', { peerId: socket.playerId });
   });
 
-  socket.on('voice-ready', () => {
-    socket.to(socket.roomCode).emit('voice-peer-joined', {
-      peerId: socket.playerId,
+  socket.on('voice-leave', () => {
+    if (!socket.roomCode) return;
+    socket.leave(`${socket.roomCode}-voice`);
+    socket.to(socket.roomCode).emit('voice-peer-left', { peerId: socket.playerId });
+  });
+
+  socket.on('voice-data', (data) => {
+    if (!socket.roomCode) return;
+    if (!(data instanceof Buffer || data instanceof ArrayBuffer)) return;
+    if (data.byteLength > 16000) return; // sanity limit
+    socket.to(`${socket.roomCode}-voice`).emit('voice-data', {
+      from: socket.playerId,
+      data,
     });
   });
 
@@ -294,7 +300,7 @@ io.on('connection', (socket) => {
   socket.on('canvas-snapshot', (data) => {
     const room = getRoom(socket.roomCode);
     if (!room) return;
-    if (typeof data !== 'string' || data.length > 500000) return;
+    if (typeof data !== 'string' || data.length > 2000000) return;
     room.lastCanvasSnapshot = data;
   });
 

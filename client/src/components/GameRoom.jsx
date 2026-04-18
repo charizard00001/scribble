@@ -34,7 +34,7 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
   const isDrawer = gameState?.currentDrawer === myId;
   const isPlaying = gameState?.status === 'drawing' || gameState?.status === 'choosing';
 
-  const { voiceActive, toggleVoice, speakingPeers, micError } = useVoiceChat(socket, initialRoom.code, myId);
+  const { voiceActive, isMuted: voiceMuted, toggleVoice, toggleMute: voiceToggleMute, speakingPeers, micError } = useVoiceChat(socket, initialRoom.code, myId);
   const { playSound, volume, setVolume, isMuted, toggleMute } = useSoundboard(socket);
 
   const addMessage = useCallback((msg) => {
@@ -278,7 +278,9 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
             <div className="mb-6">
               <VoiceControls
                 voiceActive={voiceActive}
+                isMuted={voiceMuted}
                 onToggleVoice={toggleVoice}
+                onToggleMute={voiceToggleMute}
                 micError={micError}
               />
             </div>
@@ -633,7 +635,9 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
             voiceButton={
               <VoiceControls
                 voiceActive={voiceActive}
+                isMuted={voiceMuted}
                 onToggleVoice={toggleVoice}
+                onToggleMute={voiceToggleMute}
                 micError={micError}
                 compact
               />

@@ -1,224 +1,218 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
+// ─── Socket.IO audio relay voice chat ───
+// No WebRTC / simple-peer needed. Audio is captured via Web Audio API,
+// down-sampled to 8 kHz mono, and relayed through the server.
+// Works behind any NAT / firewall and scales to 9+ players.
 
-let SimplePeerModule = null;
-async function getSimplePeer() {
-  if (!SimplePeerModule) {
-    const mod = await import('simple-peer');
-    SimplePeerModule = mod.default || mod;
-  }
-  return SimplePeerModule;
-}
+const TARGET_SAMPLE_RATE = 8000;
+const CHUNK_SAMPLES = 1600; // 200 ms at 8 kHz
+const VAD_THRESHOLD = 0.008;
 
 export default function useVoiceChat(socket, roomCode, playerId) {
-  const [voiceActive, setVoiceActive] = useState(false); // whether user has opted into voice
-  const [isMuted, setIsMuted] = useState(true);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [speakingPeers, setSpeakingPeers] = useState({});
   const [micError, setMicError] = useState(null);
 
-  const peersRef = useRef({});
   const streamRef = useRef(null);
-  const analyserMapRef = useRef({});
-  const animFrameRef = useRef(null);
+  const captureCtxRef = useRef(null);
+  const captureNodeRef = useRef(null);
+  const playbackCtxRef = useRef(null);
+  const peerPlaybackRef = useRef({}); // { peerId: { nextPlayTime } }
+  const speakTimersRef = useRef({});
   const voiceActiveRef = useRef(false);
+  const isMutedRef = useRef(false);
 
-  // Keep ref in sync
-  useEffect(() => {
-    voiceActiveRef.current = voiceActive;
-  }, [voiceActive]);
+  useEffect(() => { voiceActiveRef.current = voiceActive; }, [voiceActive]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
-  const getStream = useCallback(async () => {
-    if (streamRef.current) return streamRef.current;
+  // ── helpers ──
+
+  const downsample = useCallback((buffer, fromRate) => {
+    if (fromRate === TARGET_SAMPLE_RATE) return buffer;
+    const ratio = fromRate / TARGET_SAMPLE_RATE;
+    const len = Math.floor(buffer.length / ratio);
+    const out = new Float32Array(len);
+    for (let i = 0; i < len; i++) out[i] = buffer[Math.floor(i * ratio)];
+    return out;
+  }, []);
+
+  const float32ToInt16 = useCallback((f32) => {
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return i16;
+  }, []);
+
+  const int16ToFloat32 = useCallback((i16) => {
+    const f32 = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) {
+      f32[i] = i16[i] / (i16[i] < 0 ? 0x8000 : 0x7fff);
+    }
+    return f32;
+  }, []);
+
+  const hasVoice = useCallback((samples) => {
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+    return Math.sqrt(sum / samples.length) > VAD_THRESHOLD;
+  }, []);
+
+  // ── mark peer as speaking (auto-clears after 300 ms of silence) ──
+
+  const markSpeaking = useCallback((peerId) => {
+    setSpeakingPeers((prev) => ({ ...prev, [peerId]: true }));
+    if (speakTimersRef.current[peerId]) clearTimeout(speakTimersRef.current[peerId]);
+    speakTimersRef.current[peerId] = setTimeout(() => {
+      setSpeakingPeers((prev) => ({ ...prev, [peerId]: false }));
+    }, 300);
+  }, []);
+
+  // ── playback: schedule received PCM via AudioBufferSourceNode ──
+
+  const playChunk = useCallback((float32, peerId) => {
+    let ctx = playbackCtxRef.current;
+    if (!ctx) {
+      ctx = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
+      playbackCtxRef.current = ctx;
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const buf = ctx.createBuffer(1, float32.length, TARGET_SAMPLE_RATE);
+    buf.copyToChannel(float32, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+
+    const state = peerPlaybackRef.current[peerId];
+    const now = ctx.currentTime;
+
+    if (!state || state.nextPlayTime < now) {
+      const start = now + 0.05;
+      src.start(start);
+      peerPlaybackRef.current[peerId] = { nextPlayTime: start + buf.duration };
+    } else {
+      src.start(state.nextPlayTime);
+      state.nextPlayTime += buf.duration;
+    }
+  }, []);
+
+  // ── capture: mic → downsample → VAD → socket emit ──
+
+  const setupCapture = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      });
       streamRef.current = stream;
-      // Start with mic enabled (user just opted in)
-      stream.getAudioTracks().forEach((t) => (t.enabled = true));
       setMicError(null);
-      return stream;
-    } catch (err) {
-      setMicError('Microphone access denied. Please allow mic access to use voice chat.');
-      return null;
-    }
-  }, []);
 
-  const cleanupPeer = useCallback((peerId) => {
-    const peer = peersRef.current[peerId];
-    if (peer) {
-      peer.destroy();
-      delete peersRef.current[peerId];
-    }
-    if (analyserMapRef.current[peerId]) {
-      delete analyserMapRef.current[peerId];
-    }
-    setSpeakingPeers((prev) => {
-      const next = { ...prev };
-      delete next[peerId];
-      return next;
-    });
-  }, []);
+      const ctx = new AudioContext();
+      captureCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
 
-  const setupSpeakingDetection = useCallback((peerId, stream) => {
-    try {
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.4;
-      source.connect(analyser);
-      analyserMapRef.current[peerId] = analyser;
+      let sampleBuf = new Float32Array(0);
+
+      processor.onaudioprocess = (e) => {
+        if (!voiceActiveRef.current || isMutedRef.current) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const ds = downsample(input, ctx.sampleRate);
+
+        const merged = new Float32Array(sampleBuf.length + ds.length);
+        merged.set(sampleBuf);
+        merged.set(ds, sampleBuf.length);
+        sampleBuf = merged;
+
+        while (sampleBuf.length >= CHUNK_SAMPLES) {
+          const chunk = sampleBuf.slice(0, CHUNK_SAMPLES);
+          sampleBuf = sampleBuf.slice(CHUNK_SAMPLES);
+          if (hasVoice(chunk)) {
+            socket?.emit('voice-data', float32ToInt16(chunk).buffer);
+          }
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(ctx.destination); // needed for ScriptProcessor to fire
+      captureNodeRef.current = processor;
+      return true;
     } catch {
-      // AudioContext not available
+      setMicError('Microphone access denied. Please allow mic access to use voice chat.');
+      return false;
     }
-  }, []);
+  }, [socket, downsample, float32ToInt16, hasVoice]);
 
-  const createPeer = useCallback(
-    async (targetId, initiator, stream) => {
-      const SimplePeer = await getSimplePeer();
-      const peer = new SimplePeer({
-        initiator,
-        stream,
-        trickle: true,
-        config: { iceServers: ICE_SERVERS },
-      });
+  // ── receive audio from server ──
 
-      peer.on('signal', (signal) => {
-        socket?.emit('voice-signal', { to: targetId, signal });
-      });
-
-      peer.on('stream', (remoteStream) => {
-        const audio = new Audio();
-        audio.srcObject = remoteStream;
-        audio.play().catch(() => {});
-        setupSpeakingDetection(targetId, remoteStream);
-      });
-
-      peer.on('close', () => cleanupPeer(targetId));
-      peer.on('error', (err) => {
-        console.warn(`Peer error with ${targetId}:`, err.message);
-        cleanupPeer(targetId);
-      });
-
-      peersRef.current[targetId] = peer;
-      return peer;
-    },
-    [socket, setupSpeakingDetection, cleanupPeer]
-  );
-
-  // Speaking detection loop — only runs when voice is active
   useEffect(() => {
-    if (!voiceActive) return;
+    if (!socket) return;
 
-    const detect = () => {
-      const updates = {};
-      for (const [peerId, analyser] of Object.entries(analyserMapRef.current)) {
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        updates[peerId] = avg > 15;
-      }
-      setSpeakingPeers(updates);
-      animFrameRef.current = requestAnimationFrame(detect);
-    };
-    animFrameRef.current = requestAnimationFrame(detect);
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [voiceActive]);
-
-  // Voice signaling — only respond to signals when voice is active
-  useEffect(() => {
-    if (!socket || !roomCode) return;
-
-    const handleVoiceSignal = async ({ from, signal }) => {
-      if (!voiceActiveRef.current) return;
-
-      let peer = peersRef.current[from];
-      if (!peer) {
-        const stream = streamRef.current;
-        if (!stream) return;
-        peer = await createPeer(from, false, stream);
-      }
-      try {
-        peer.signal(signal);
-      } catch (err) {
-        console.warn('Signal error:', err.message);
-      }
-    };
-
-    const handlePeerJoined = async ({ peerId }) => {
-      if (!voiceActiveRef.current) return;
-      if (peerId === playerId) return;
-      if (peersRef.current[peerId]) return;
-
-      const stream = streamRef.current;
-      if (!stream) return;
-      await createPeer(peerId, true, stream);
+    const handleVoiceData = ({ from, data }) => {
+      if (!voiceActiveRef.current || from === playerId) return;
+      const f32 = int16ToFloat32(new Int16Array(data));
+      playChunk(f32, from);
+      markSpeaking(from);
     };
 
     const handlePeerLeft = ({ peerId }) => {
-      cleanupPeer(peerId);
+      delete peerPlaybackRef.current[peerId];
+      setSpeakingPeers((prev) => {
+        const next = { ...prev };
+        delete next[peerId];
+        return next;
+      });
     };
 
-    socket.on('voice-signal', handleVoiceSignal);
-    socket.on('voice-peer-joined', handlePeerJoined);
+    socket.on('voice-data', handleVoiceData);
     socket.on('voice-peer-left', handlePeerLeft);
-
     return () => {
-      socket.off('voice-signal', handleVoiceSignal);
-      socket.off('voice-peer-joined', handlePeerJoined);
+      socket.off('voice-data', handleVoiceData);
       socket.off('voice-peer-left', handlePeerLeft);
     };
-  }, [socket, roomCode, playerId, createPeer, cleanupPeer]);
+  }, [socket, playerId, int16ToFloat32, playChunk, markSpeaking]);
 
-  const cleanupAllPeers = useCallback(() => {
-    for (const peerId of Object.keys(peersRef.current)) {
-      cleanupPeer(peerId);
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
+  // ── cleanup ──
+
+  const cleanupAll = useCallback(() => {
+    if (captureNodeRef.current) { captureNodeRef.current.disconnect(); captureNodeRef.current = null; }
+    if (captureCtxRef.current) { captureCtxRef.current.close().catch(() => {}); captureCtxRef.current = null; }
+    if (playbackCtxRef.current) { playbackCtxRef.current.close().catch(() => {}); playbackCtxRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+    peerPlaybackRef.current = {};
+    for (const t of Object.values(speakTimersRef.current)) clearTimeout(t);
+    speakTimersRef.current = {};
     setSpeakingPeers({});
-  }, [cleanupPeer]);
+  }, []);
 
-  // Toggle voice on/off (the main control)
+  // ── public controls ──
+
   const toggleVoice = useCallback(async () => {
     if (voiceActive) {
-      // Turn voice OFF — cleanup everything
-      cleanupAllPeers();
+      cleanupAll();
       setVoiceActive(false);
-      setIsMuted(true);
-      voiceActiveRef.current = false;
-    } else {
-      // Turn voice ON — request mic, join voice mesh
-      const stream = await getStream();
-      if (!stream) return;
-      stream.getAudioTracks().forEach((t) => (t.enabled = true));
       setIsMuted(false);
+      voiceActiveRef.current = false;
+      socket?.emit('voice-leave');
+    } else {
+      const ok = await setupCapture();
+      if (!ok) return;
       setVoiceActive(true);
+      setIsMuted(false);
       voiceActiveRef.current = true;
-      // Announce to other peers
-      socket?.emit('voice-ready');
+      socket?.emit('voice-join');
     }
-  }, [voiceActive, getStream, cleanupAllPeers, socket]);
+  }, [voiceActive, setupCapture, cleanupAll, socket]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanupAllPeers();
-    };
-  }, [cleanupAllPeers]);
+  const toggleMute = useCallback(() => {
+    setIsMuted((prev) => !prev);
+  }, []);
 
-  return {
-    voiceActive,
-    isMuted,
-    toggleVoice,
-    speakingPeers,
-    micError,
-  };
+  useEffect(() => () => cleanupAll(), [cleanupAll]);
+
+  return { voiceActive, isMuted, toggleVoice, toggleMute, speakingPeers, micError };
 }
