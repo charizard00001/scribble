@@ -17,45 +17,23 @@ const FALLBACKS = [
 
 // ---- Roast Personas ----
 
-const ROAST_PERSONAS = [
-  {
-    theme: '💅 Girlfriend',
-    prompt: `You are the drawer's imaginary girlfriend roasting their drawing. Be savage like a disappointed partner. Examples: "This is why I never let you pick restaurants", "My ex drew better stick figures", "I showed this to my mom and she asked if you need help". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '💻 Tech Lead',
-    prompt: `You are a toxic tech lead reviewing this drawing like it's a pull request. Use tech/coding metaphors. Examples: "Rejected. Needs refactoring. And therapy", "This has more bugs than our production server", "Even ChatGPT would refuse to generate this". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '📚 Professor',
-    prompt: `You are a disappointed college professor grading this drawing. Be academic but savage. Examples: "I'm giving this a D- and that's generous", "Were you even attending class?", "Submissions like these make me question my career choice". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '🤱 Indian Mom',
-    prompt: `You are a dramatic Indian mom seeing her child's drawing. Be dramatic and guilt-trippy. Examples: "Sharma ji ka beta draws so well, and you give me this?", "I told you to become a doctor, not an artist", "All that tuition money for THIS?". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '🎙️ Commentator',
-    prompt: `You are an overly dramatic sports commentator roasting this drawing. Be loud and energetic. Examples: "AND IT'S A DISASTER ON THE CANVAS!", "The crowd goes silent... nobody knows what that is", "A swing and a MISS!". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '🛋️ Therapist',
-    prompt: `You are a concerned therapist analyzing the drawing. Be passive-aggressive. Examples: "And how does drawing like this make you feel?", "Let's unpack what went wrong here... actually, let's not", "I think we need more sessions after seeing this". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '📱 Gen-Z',
-    prompt: `You are a Gen-Z kid roasting this drawing using internet slang. Be unhinged. Examples: "no cap this is the worst thing I've ever seen fr fr", "bro really said lemme traumatize everyone 💀", "the delusion is giving main character energy ngl". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
-  {
-    theme: '👨‍🍳 Gordon Ramsay',
-    prompt: `You are Gordon Ramsay but for art instead of food. Be furious. Examples: "IT'S RAW! The talent is completely raw!", "I wouldn't hang this in a prison cell", "My 5-year-old draws better, and she uses crayons with her feet!". Keep it 1-2 sentences, under 30 words. Never start with "This" or "The drawing". Be creative with your opening.`,
-  },
+const ROAST_STYLES = [
+  `Roast the drawing by comparing it to something from the drawer's love life. Be savage and short. One sentence, max 20 words. Focus on what the drawing actually looks like. Example tone: "Even my blind date had better curves than whatever that is."`,
+  `Roast the drawing using IT/coding/tech humor. One sentence, max 20 words. Describe what you actually see in the image and mock it. Example tone: "404: artistic talent not found."`,
+  `Roast the drawing like a disappointed college professor. One sentence, max 20 words. Reference what the drawing looks like. Example tone: "I've seen better work from students who held the pen with their feet."`,
+  `Roast the drawing like an Indian mom guilt-tripping her child. One sentence, max 20 words. React to what's actually drawn. Example tone: "Sharma ji ka beta would never draw something this cursed."`,
+  `Roast the drawing like a dramatic sports commentator. One sentence, max 20 words. Narrate what you see as if it's a live disaster. Example tone: "AND THE ARTIST HAS COMPLETELY LOST THE PLOT!"`,
+  `Roast the drawing like a sarcastic therapist. One sentence, max 20 words. Analyze what's drawn with fake concern. Example tone: "Tell me about the trauma that led to those proportions."`,
+  `Roast the drawing using unhinged Gen-Z internet slang. One sentence, max 20 words. React to what's actually in the image. Example tone: "bestie thought they ate but the canvas is starving fr 💀"`,
+  `Roast the drawing like a furious Gordon Ramsay. One sentence, max 20 words. Yell about what you see. Example tone: "IT'S BLOODY RAW! I've seen better lines on a parking lot!"`,
+  `Roast the drawing by comparing it to something from office/corporate life. One sentence, max 20 words. Mock what's drawn. Example tone: "Looks like someone made this during a meeting they weren't paying attention to."`,
+  `Roast the drawing like a savage stand-up comedian. One sentence, max 20 words. Make a joke about what the drawing actually looks like. Example tone: "If I squint hard enough, I can almost see effort."`,
 ];
 
 export async function generateRoast(base64Png, word) {
   if (!groq) return null;
 
-  const persona = ROAST_PERSONAS[Math.floor(Math.random() * ROAST_PERSONAS.length)];
+  const style = ROAST_STYLES[Math.floor(Math.random() * ROAST_STYLES.length)];
 
   try {
     const completion = await groq.chat.completions.create({
@@ -63,14 +41,14 @@ export async function generateRoast(base64Png, word) {
       messages: [
         {
           role: 'system',
-          content: persona.prompt,
+          content: `You roast drawings in a Pictionary-style game. LOOK AT THE IMAGE and describe/mock what you actually see. ${style} Never start with "This" or "The drawing". Just the roast, nothing else.`,
         },
         {
           role: 'user',
           content: [
             {
               type: 'text',
-              text: `The player was supposed to draw: "${word}". Roast their drawing.`,
+              text: `They tried to draw: "${word}". Look at the image and roast it.`,
             },
             {
               type: 'image_url',
@@ -83,15 +61,15 @@ export async function generateRoast(base64Png, word) {
           ],
         },
       ],
-      max_completion_tokens: 100,
-      temperature: 1.2,
+      max_completion_tokens: 60,
+      temperature: 1.3,
     });
 
     const text = completion.choices?.[0]?.message?.content?.trim();
-    return { text: text || randomFallback(), theme: text ? persona.theme : '🤖 AI' };
+    return { text: text || randomFallback() };
   } catch (err) {
     console.error('AI roast error:', err.message);
-    return { text: randomFallback(), theme: '🤖 AI' };
+    return { text: randomFallback() };
   }
 }
 
