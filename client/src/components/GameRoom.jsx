@@ -27,6 +27,7 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
   const [isSpeedRound, setIsSpeedRound] = useState(false);
   const [reactions, setReactions] = useState([]);
   const [titles, setTitles] = useState(null);
+  const [theme, setTheme] = useState(null);
 
   const myId = socket?.id;
   const isHost = myId === hostId;
@@ -53,11 +54,12 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
       'player-disconnected': ({ players: p }) => setPlayers(p),
       'player-reconnected': ({ players: p }) => setPlayers(p),
 
-      'game-started': ({ gameState: gs, players: p }) => {
+      'game-started': ({ gameState: gs, players: p, theme: t }) => {
         setGameState(gs);
         setPlayers(p);
         setMessages([]);
         setGameOverData(null);
+        setTheme(t || null);
       },
 
       'new-turn': ({ drawerId, round, totalRounds, isSpeedRound: speed }) => {
@@ -149,6 +151,7 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
         setIsSpeedRound(false);
         setTitles(null);
         setReactions([]);
+        setTheme(null);
       },
 
       'kicked': () => {
@@ -159,8 +162,8 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
         setReactions((prev) => [...prev, { emoji, left: 10 + Math.random() * 80 }]);
       },
 
-      'roast-message': ({ text }) => {
-        addMessage({ type: 'roast', text });
+      'roast-message': ({ text, theme: roastTheme }) => {
+        addMessage({ type: 'roast', text, roastTheme: roastTheme || '🤖 AI' });
       },
     };
 
@@ -384,6 +387,11 @@ export default function GameRoom({ socket, room: initialRoom, username, onLeave 
       <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-surface-lighter shrink-0">
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm text-text-muted">Room: {initialRoom.code}</span>
+          {theme && (
+            <span className="text-sm font-medium text-purple-300 bg-purple-500/15 px-2.5 py-0.5 rounded-full">
+              {theme}
+            </span>
+          )}
           {isSpeedRound ? (
             <span className="text-sm font-bold text-warning bg-warning/15 px-2.5 py-0.5 rounded-full animate-speed-pulse">
               ⚡ SPEED ROUND

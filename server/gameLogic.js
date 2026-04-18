@@ -1,7 +1,8 @@
 import words, { easyWords } from './words.js';
 import { computeTitles } from './titleEngine.js';
+import { generateAIWords } from './aiRoast.js';
 
-export function startGame(room) {
+export async function startGame(room) {
   const connectedPlayers = Array.from(room.players.values()).filter((p) => p.isConnected);
   if (connectedPlayers.length < 2) {
     return { error: 'Need at least 2 players to start' };
@@ -9,6 +10,20 @@ export function startGame(room) {
 
   const drawOrder = connectedPlayers.map((p) => p.id);
   shuffleArray(drawOrder);
+
+  // Generate AI words for this game
+  let aiWordPool = null;
+  let theme = null;
+  try {
+    const aiResult = await generateAIWords();
+    if (aiResult) {
+      aiWordPool = aiResult.words;
+      theme = aiResult.theme;
+      console.log(`AI generated ${aiResult.words.length} words for theme: ${aiResult.theme}`);
+    }
+  } catch (err) {
+    console.error('AI word generation failed, using static words:', err.message);
+  }
 
   room.gameState = {
     status: 'playing',
@@ -30,6 +45,8 @@ export function startGame(room) {
     isSpeedRound: false,
     turnCount: 0,
     playerStats: {},
+    aiWordPool,
+    theme,
   };
 
   for (const player of room.players.values()) {
@@ -47,19 +64,31 @@ export function startGame(room) {
     };
   }
 
-  return { success: true };
+  return { success: true, theme };
 }
 
 export function getWordChoices(room, useEasy = false) {
-  const baseWords = useEasy ? easyWords : words;
-  const allWords = [...baseWords, ...room.settings.customWords];
-  const available = allWords.filter((w) => !room.gameState.usedWords.has(w));
+  // Speed round always uses easy static words
+  if (useEasy) {
+    const allWords = [...easyWords, ...room.settings.customWords];
+    const available = allWords.filter((w) => !room.gameState.usedWords.has(w));
+    const pool = available.length >= 3 ? available : allWords;
+    return pickRandom(pool, 3);
+  }
 
+  // Use AI-generated words if available, fall back to static
+  const gs = room.gameState;
+  const baseWords = gs.aiWordPool && gs.aiWordPool.length > 0 ? gs.aiWordPool : words;
+  const allWords = [...baseWords, ...room.settings.customWords];
+  const available = allWords.filter((w) => !gs.usedWords.has(w));
   const pool = available.length >= 3 ? available : allWords;
+  return pickRandom(pool, 3);
+}
+
+function pickRandom(pool, count) {
   const choices = [];
   const used = new Set();
-
-  while (choices.length < 3 && choices.length < pool.length) {
+  while (choices.length < count && choices.length < pool.length) {
     const idx = Math.floor(Math.random() * pool.length);
     const word = pool[idx];
     if (!used.has(word)) {
@@ -67,7 +96,6 @@ export function getWordChoices(room, useEasy = false) {
       choices.push(word);
     }
   }
-
   return choices;
 }
 

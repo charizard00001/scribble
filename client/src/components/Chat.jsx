@@ -38,7 +38,7 @@ export default function Chat({ messages, onGuess, isDrawer, hasGuessed, gameStat
               <span className="font-semibold">{msg.text}</span>
             ) : msg.type === 'roast' ? (
               <span className="flex items-start gap-1.5">
-                <span className="shrink-0 text-xs bg-purple-500/20 text-purple-300 px-1 py-0.5 rounded font-mono">🤖 AI</span>
+                <span className="shrink-0 text-xs bg-purple-500/20 text-purple-300 px-1 py-0.5 rounded font-mono">{msg.roastTheme || '🤖 AI'}</span>
                 <span className="italic">{msg.text}</span>
               </span>
             ) : msg.type === 'close' ? (

@@ -108,12 +108,12 @@ io.on('connection', (socket) => {
 
   // --- Game Events ---
 
-  socket.on('start-game', (callback) => {
+  socket.on('start-game', async (callback) => {
     const room = getRoom(socket.roomCode);
     if (!room) return callback?.({ error: 'Room not found' });
     if (room.hostId !== socket.playerId) return callback?.({ error: 'Only the host can start the game' });
 
-    const result = startGame(room);
+    const result = await startGame(room);
     if (result.error) return callback?.({ error: result.error });
 
     const turnInfo = startTurn(room, io);
@@ -121,6 +121,7 @@ io.on('connection', (socket) => {
     io.to(room.code).emit('game-started', {
       gameState: serializeRoom(room).gameState,
       players: serializeRoom(room).players,
+      theme: result.theme || null,
     });
 
     io.to(room.code).emit('new-turn', {
@@ -136,7 +137,7 @@ io.on('connection', (socket) => {
     }
 
     callback?.({ success: true });
-    console.log(`Game started in room ${room.code}`);
+    console.log(`Game started in room ${room.code}${result.theme ? ` — Theme: ${result.theme}` : ''}`);
   });
 
   socket.on('select-word', ({ word }) => {
@@ -311,9 +312,9 @@ io.on('connection', (socket) => {
     if (!word || !process.env.GROQ_API_KEY) return;
 
     try {
-      const roastText = await generateRoast(snapshot, word);
-      if (roastText) {
-        io.to(room.code).emit('roast-message', { text: roastText, word });
+      const roastResult = await generateRoast(snapshot, word);
+      if (roastResult) {
+        io.to(room.code).emit('roast-message', { text: roastResult.text, theme: roastResult.theme, word });
       }
     } catch (err) {
       console.error('Roast generation failed:', err.message);
