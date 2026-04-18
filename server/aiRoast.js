@@ -76,26 +76,26 @@ export async function generateRoast(base64Png, word) {
 // ---- AI Word Generator ----
 
 const WORD_THEMES = [
-  { name: 'Horror Movies', emoji: '🎃', prompt: 'things you see in horror movies (monsters, objects, scenes)' },
-  { name: 'College Life', emoji: '🎓', prompt: 'things related to college life (dorm items, campus things, student struggles)' },
-  { name: 'Kitchen Chaos', emoji: '🍳', prompt: 'things found in a kitchen or related to cooking' },
-  { name: 'Space Adventure', emoji: '🚀', prompt: 'things related to space, planets, astronauts, and sci-fi' },
-  { name: 'Office Life', emoji: '💼', prompt: 'things found in an office or related to corporate work culture' },
-  { name: 'Bollywood', emoji: '🎬', prompt: 'things related to Indian Bollywood movies, actors doing dramatic things, and filmy scenes' },
-  { name: 'Video Games', emoji: '🎮', prompt: 'things related to video games, gaming culture, and famous game characters/items' },
-  { name: 'Beach Vacation', emoji: '🏖️', prompt: 'things you see at a beach or on a tropical vacation' },
-  { name: 'Gym Bro', emoji: '💪', prompt: 'things related to gym, fitness, workouts, and gym culture' },
-  { name: 'Fairy Tales', emoji: '🧚', prompt: 'things from fairy tales, fantasy stories, and magical worlds' },
-  { name: 'Street Food', emoji: '🌮', prompt: 'street food items, food carts, and roadside snack culture from around the world' },
-  { name: 'School Days', emoji: '📝', prompt: 'things related to school life, classrooms, teachers, and playground' },
-  { name: 'Zombie Apocalypse', emoji: '🧟', prompt: 'things you would see or need during a zombie apocalypse' },
-  { name: 'Wedding Drama', emoji: '💍', prompt: 'things related to weddings, ceremonies, and wedding drama' },
-  { name: 'Social Media', emoji: '📱', prompt: 'things related to social media, influencers, memes, and internet culture' },
-  { name: 'Superhero Universe', emoji: '🦸', prompt: 'things related to superheroes, villains, superpowers, and comic books' },
-  { name: 'Road Trip', emoji: '🚗', prompt: 'things you see or do on a road trip' },
-  { name: 'Pet Life', emoji: '🐶', prompt: 'things related to pet ownership, pet behavior, and animals being funny' },
-  { name: 'Festival Vibes', emoji: '🎉', prompt: 'things seen at festivals, carnivals, and celebrations around the world' },
-  { name: 'IT Department', emoji: '🖥️', prompt: 'things related to IT jobs, coding, debugging, servers crashing, and tech culture' },
+  { name: 'Indian Food', emoji: '🍛', prompt: 'famous Indian foods, dishes, snacks, and drinks (like samosa, chai, biryani, paneer, dosa, jalebi)' },
+  { name: 'Bollywood', emoji: '🎬', prompt: 'iconic Bollywood things you can draw — props, items, gestures, vehicles from famous scenes (like rickshaw, mustache, dupatta, dhol)' },
+  { name: 'Indian Festivals', emoji: '🎆', prompt: 'things seen during Indian festivals like Diwali, Holi, Navratri, Eid, Christmas (like rangoli, firecracker, gulaal, lantern, garba)' },
+  { name: 'Cricket', emoji: '🏏', prompt: 'things related to cricket — equipment, actions, famous things in cricket (like bat, wicket, sixer, umpire, trophy)' },
+  { name: 'Indian Streets', emoji: '🛺', prompt: 'things you see on Indian streets and roads (like autorickshaw, chai-stall, cow, pothole, billboard, temple)' },
+  { name: 'World Landmarks', emoji: '🇮🇳', prompt: 'famous world landmarks and monuments you can draw (like Tajmahal, Eiffel Tower, Pyramid, Colosseum, Statue of Liberty)' },
+  { name: 'Tech & Internet', emoji: '💻', prompt: 'famous tech things, apps, gadgets, and internet culture items you can draw (like iPhone, laptop, wifi, robot, hashtag, selfie)' },
+  { name: 'Superheroes', emoji: '🦸', prompt: 'famous superheroes, villains, and their iconic items (like Thor, Batman, shield, cape, Hulk, Spiderman, Thanos)' },
+  { name: 'Indian Wildlife', emoji: '🐯', prompt: 'animals and wildlife found in India (like tiger, peacock, cobra, elephant, monkey, parrot, camel)' },
+  { name: 'World Cup Fever', emoji: '🏆', prompt: 'things related to sports tournaments, FIFA, Olympics, IPL (like trophy, medal, stadium, jersey, goalpost, mascot)' },
+  { name: 'Indian Wedding', emoji: '👰', prompt: 'things seen at an Indian wedding (like mandap, baraat, mehndi, turban, lehenga, horse, drums)' },
+  { name: 'College Life', emoji: '🎓', prompt: 'things from Indian college life (like canteen, hostel, maggi, backbench, exam, bicycle, library)' },
+  { name: 'Viral Memes', emoji: '😂', prompt: 'real things or objects from famous viral memes and internet trends you can draw (like coffin, cat, doge, frog, stonks, keyboard)' },
+  { name: 'Indian Transport', emoji: '🚌', prompt: 'Indian transportation and vehicles (like autorickshaw, train, bullockcart, scooter, bus, bicycle, boat)' },
+  { name: 'Space & Science', emoji: '🚀', prompt: 'space and science things you can draw (like rocket, astronaut, planet, telescope, satellite, UFO, moon)' },
+  { name: 'Desi Kitchen', emoji: '🍳', prompt: 'things found in an Indian kitchen (like pressure-cooker, rolling-pin, tawa, masala, chai, thali, mortar)' },
+  { name: 'Gaming World', emoji: '🎮', prompt: 'famous video game characters and items (like Mario, sword, mushroom, controller, Pikachu, creeper, coin)' },
+  { name: 'Indian Clothes', emoji: '👗', prompt: 'Indian clothing and accessories (like saree, turban, kurta, bindi, juttis, bangles, dupatta, lungi)' },
+  { name: 'World Leaders', emoji: '🌍', prompt: 'things associated with famous world leaders or politicians that you can draw (like podium, flag, suit, microphone, glasses, crown)' },
+  { name: 'Street Food India', emoji: '🍢', prompt: 'Indian street food items (like panipuri, chaatplate, kulfi, vada-pav, momos, bhelpuri, sugarcane)' },
 ];
 
 export async function generateAIWords() {
@@ -109,7 +109,7 @@ export async function generateAIWords() {
       messages: [
         {
           role: 'system',
-          content: 'You generate word lists for a drawing game like Pictionary. Words must be drawable (physical objects, characters, scenes, actions). Return ONLY a JSON array of 25 unique words, nothing else. Each word should be 1-3 words long. No duplicates. No abstract concepts.',
+          content: 'You generate word lists for a drawing game. Words MUST be drawable. Return ONLY a JSON array of 25 unique words. IMPORTANT RULES: Prefer single words (like "samosa", "rocket", "tiger"). Two words max (like "cricket bat"). NEVER use 3+ word phrases. No sentences. No abstract concepts. Keep it simple and fun.',
         },
         {
           role: 'user',
@@ -129,8 +129,9 @@ export async function generateAIWords() {
 
     const parsed = JSON.parse(`[${match[1]}]`);
     const words = parsed
-      .filter((w) => typeof w === 'string' && w.length > 0 && w.length <= 30)
+      .filter((w) => typeof w === 'string' && w.length > 0 && w.length <= 20)
       .map((w) => w.toLowerCase().trim())
+      .filter((w) => w.split(/\s+/).length <= 2)
       .filter((w, i, arr) => arr.indexOf(w) === i);
 
     if (words.length < 5) return null;
