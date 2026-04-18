@@ -13,13 +13,11 @@ export async function startGame(room) {
 
   // Generate AI words for this game
   let aiWordPool = null;
-  let theme = null;
   try {
     const aiResult = await generateAIWords();
     if (aiResult) {
       aiWordPool = aiResult.words;
-      theme = aiResult.theme;
-      console.log(`AI generated ${aiResult.words.length} words for theme: ${aiResult.theme}`);
+      console.log(`AI generated ${aiResult.words.length} mixed words`);
     }
   } catch (err) {
     console.error('AI word generation failed, using static words:', err.message);
@@ -46,7 +44,6 @@ export async function startGame(room) {
     turnCount: 0,
     playerStats: {},
     aiWordPool,
-    theme,
   };
 
   for (const player of room.players.values()) {
@@ -64,7 +61,7 @@ export async function startGame(room) {
     };
   }
 
-  return { success: true, theme };
+  return { success: true };
 }
 
 export function getWordChoices(room, useEasy = false) {

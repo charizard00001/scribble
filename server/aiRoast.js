@@ -101,7 +101,10 @@ const WORD_THEMES = [
 export async function generateAIWords() {
   if (!groq) return null;
 
-  const theme = WORD_THEMES[Math.floor(Math.random() * WORD_THEMES.length)];
+  // Pick 5 random themes for variety instead of locking to one
+  const shuffled = [...WORD_THEMES].sort(() => Math.random() - 0.5);
+  const selectedThemes = shuffled.slice(0, 5);
+  const themeDescriptions = selectedThemes.map((t) => t.prompt).join('; ');
 
   try {
     const completion = await groq.chat.completions.create({
@@ -109,11 +112,11 @@ export async function generateAIWords() {
       messages: [
         {
           role: 'system',
-          content: 'You generate word lists for a drawing game. Words MUST be drawable. Return ONLY a JSON array of 25 unique words. IMPORTANT RULES: Prefer single words (like "samosa", "rocket", "tiger"). Two words max (like "cricket bat"). NEVER use 3+ word phrases. No sentences. No abstract concepts. Keep it simple and fun.',
+          content: 'You generate word lists for a drawing game. Words MUST be drawable. Return ONLY a JSON array of 30 unique words. IMPORTANT RULES: Prefer single words (like "samosa", "rocket", "tiger"). Two words max (like "cricket bat"). NEVER use 3+ word phrases. No sentences. No abstract concepts. Keep it simple and fun. Pick words from ALL the categories given — do NOT focus on just one.',
         },
         {
           role: 'user',
-          content: `Generate 25 drawable words related to: ${theme.prompt}. Return only a JSON array like ["word1", "word2", ...]. No explanation.`,
+          content: `Generate 30 drawable words, mixing these categories: ${themeDescriptions}. Return only a JSON array like ["word1", "word2", ...]. No explanation.`,
         },
       ],
       max_completion_tokens: 500,
@@ -136,7 +139,7 @@ export async function generateAIWords() {
 
     if (words.length < 5) return null;
 
-    return { theme: `${theme.emoji} ${theme.name}`, words };
+    return { words };
   } catch (err) {
     console.error('AI word generation error:', err.message);
     return null;

@@ -121,7 +121,6 @@ io.on('connection', (socket) => {
     io.to(room.code).emit('game-started', {
       gameState: serializeRoom(room).gameState,
       players: serializeRoom(room).players,
-      theme: result.theme || null,
     });
 
     io.to(room.code).emit('new-turn', {
@@ -137,7 +136,7 @@ io.on('connection', (socket) => {
     }
 
     callback?.({ success: true });
-    console.log(`Game started in room ${room.code}${result.theme ? ` — Theme: ${result.theme}` : ''}`);
+    console.log(`Game started in room ${room.code}`);
   });
 
   socket.on('select-word', ({ word }) => {
